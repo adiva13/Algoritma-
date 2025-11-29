@@ -1,5 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
+import time
+import threading
+import winsound  # Untuk suara di Windows
 
 class TicTacToe:
     def __init__(self, root):
@@ -14,42 +17,48 @@ class TicTacToe:
         self.skor_x = 0
         self.skor_o = 0
 
-        self.waktu = 10  # timer per giliran
-        self.timer_id = None
+        self.timer = 10  # detik
+        self.timer_label = None
+        self.timer_thread = None
+        self.timer_running = False
 
         self.buat_widget()
         self.mulai_timer()
 
     def buat_widget(self):
+        # Pita pink
+        pita = tk.Frame(self.root, bg="#ff69b4", height=10)
+        pita.grid(row=0, column=0, columnspan=3, sticky="ew")
+
         label_judul = tk.Label(
             self.root,
             text="TIC-TAC-TOE DIVA",
             font=("Arial", 24, "bold"),
             bg="#2c3e50",
-            fg="white",
+            fg="#ff69b4",     # 🔥 warna pink
             pady=10
         )
-        label_judul.grid(row=0, column=0, columnspan=3, sticky="ew")
+        label_judul.grid(row=1, column=0, columnspan=3, sticky="ew")
 
         self.label_pemain = tk.Label(
             self.root,
-            text=f"Giliran: {self.pemain_sekarang.upper()}",
+            text=f"Giliran: {self.pemain_sekarang}",
             font=("Arial", 16),
             bg="#34495e",
             fg="white",
             pady=10
         )
-        self.label_pemain.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.label_pemain.grid(row=2, column=0, columnspan=3, sticky="ew")
 
-        self.label_timer = tk.Label(
+        self.timer_label = tk.Label(
             self.root,
-            text=f"Timer: {self.waktu} detik",
-            font=("Arial", 16, "bold"),
+            text=f"Waktu: {self.timer} detik",
+            font=("Arial", 14),
             bg="#34495e",
-            fg="yellow",
-            pady=10
+            fg="white",
+            pady=5
         )
-        self.label_timer.grid(row=2, column=0, columnspan=3, sticky="ew")
+        self.timer_label.grid(row=3, column=0, columnspan=3, sticky="ew")
 
         for i in range(9):
             tmbl = tk.Button(
@@ -60,23 +69,23 @@ class TicTacToe:
                 height=2,
                 bg="black",
                 fg="white",
-                activebackground="#333333",
+                activebackground="#555555",
                 command=lambda indeks=i: self.lakukan_langkah(indeks)
             )
-            baris = (i // 3) + 3
+            baris = (i // 3) + 4
             kolom = i % 3
             tmbl.grid(row=baris, column=kolom, padx=5, pady=5)
             self.tombol.append(tmbl)
 
         self.label_skor = tk.Label(
             self.root,
-            text=f"Skor - X: {self.skor_x} | O: {self.skor_o}",
-            font=("Arial", 16, "bold"),
+            text=f"Skor - x: {self.skor_x} | o: {self.skor_o}",
+            font=("Arial", 14),
             bg="#34495e",
-            fg="blue",  # warna skor biru
+            fg="blue",
             pady=10
         )
-        self.label_skor.grid(row=6, column=0, columnspan=3, sticky="ew")
+        self.label_skor.grid(row=7, column=0, columnspan=3, sticky="ew")
 
         tombol_reset = tk.Button(
             self.root,
@@ -88,38 +97,21 @@ class TicTacToe:
             command=self.atur_ulang_permainan,
             pady=10
         )
-        tombol_reset.grid(row=7, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+        tombol_reset.grid(row=8, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
 
         self.root.configure(bg="#34495e")
 
-    def mulai_timer(self):
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
-
-        self.waktu = 10
-        self.update_timer()
-
-    def update_timer(self):
-        self.label_timer.config(text=f"Timer: {self.waktu} detik")
-
-        if self.waktu <= 0:
-            messagebox.showinfo("Waktu Habis", f"Pemain {self.pemain_sekarang.upper()} kehabisan waktu!")
-            self.pemain_sekarang = "o" if self.pemain_sekarang == "x" else "x"
-            self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang.upper()}")
-            self.mulai_timer()
-            return
-
-        self.waktu -= 1
-        self.timer_id = self.root.after(1000, self.update_timer)
+    def mainkan_suara(self):
+        winsound.Beep(1000, 100)  # 1000 Hz selama 100 ms
 
     def lakukan_langkah(self, indeks):
+        self.mainkan_suara()
+
         if self.papan[indeks] == "" and not self.cek_pemenang():
             self.papan[indeks] = self.pemain_sekarang
-
-            warna = "red" if self.pemain_sekarang == "x" else "green"
-
+            warna = "#e74c3c" if self.pemain_sekarang == "x" else "#ffa500"
             self.tombol[indeks].config(
-                text=self.pemain_sekarang.upper(),
+                text=self.pemain_sekarang,
                 fg=warna,
                 state="disabled"
             )
@@ -131,20 +123,18 @@ class TicTacToe:
                 else:
                     self.skor_o += 1
                 self.perbarui_skor()
-                messagebox.showinfo("Permainan Selesai", f"Pemain {pemenang.upper()} Menang!")
+                messagebox.showinfo("Permainan Selesai", f"Pemain {pemenang} Menang!")
                 self.nonaktifkan_semua_tombol()
-                return
+                self.timer_running = False
 
             elif "" not in self.papan:
                 messagebox.showinfo("Permainan Selesai", "Seri!")
-                return
+                self.timer_running = False
 
-            # ganti pemain
-            self.pemain_sekarang = "o" if self.pemain_sekarang == "x" else "x"
-            self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang.upper()}")
-
-            # restart timer
-            self.mulai_timer()
+            else:
+                self.pemain_sekarang = "o" if self.pemain_sekarang == "x" else "x"
+                self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang}")
+                self.timer = 10
 
     def cek_pemenang(self):
         menang = [
@@ -152,6 +142,7 @@ class TicTacToe:
             [0, 3, 6], [1, 4, 7], [2, 5, 8],
             [0, 4, 8], [2, 4, 6]
         ]
+
         for kombinasi in menang:
             if (
                 self.papan[kombinasi[0]] == self.papan[kombinasi[1]] ==
@@ -160,6 +151,7 @@ class TicTacToe:
                 for idx in kombinasi:
                     self.tombol[idx].config(bg="#2ecc71")
                 return True
+
         return False
 
     def nonaktifkan_semua_tombol(self):
@@ -167,12 +159,9 @@ class TicTacToe:
             tmbl.config(state="disabled")
 
     def atur_ulang_permainan(self):
-        if self.timer_id:
-            self.root.after_cancel(self.timer_id)
-
         self.pemain_sekarang = "x"
         self.papan = [""] * 9
-        self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang.upper()}")
+        self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang}")
 
         for tmbl in self.tombol:
             tmbl.config(
@@ -181,11 +170,29 @@ class TicTacToe:
                 bg="black",
                 fg="white"
             )
-
+        self.timer = 10
+        self.timer_running = True
         self.mulai_timer()
 
     def perbarui_skor(self):
-        self.label_skor.config(text=f"Skor - X: {self.skor_x} | O: {self.skor_o}")
+        self.label_skor.config(text=f"Skor - x: {self.skor_x} | o: {self.skor_o}")
+
+    def mulai_timer(self):
+        self.timer_running = True
+        if self.timer_thread is None or not self.timer_thread.is_alive():
+            self.timer_thread = threading.Thread(target=self.update_timer)
+            self.timer_thread.daemon = True
+            self.timer_thread.start()
+
+    def update_timer(self):
+        while self.timer_running:
+            self.timer_label.config(text=f"Waktu: {self.timer} detik")
+            if self.timer <= 0:
+                self.pemain_sekarang = "o" if self.pemain_sekarang == "x" else "x"
+                self.label_pemain.config(text=f"Giliran: {self.pemain_sekarang}")
+                self.timer = 10
+            time.sleep(1)
+            self.timer -= 1
 
 
 if __name__ == "__main__":
